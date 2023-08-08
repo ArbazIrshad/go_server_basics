@@ -1,11 +1,20 @@
 package main
 
 import (
+	"database/sql"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+
+	// Notice how the import path for our driver is prefixed with an underscore? This is because
+	// our main.go file doesn’t actually use anything in the mysql package. So if we try to import
+	// it normally the Go compiler will raise an error. However, we need the driver’s init()
+	// function to run so that it can register itself with the database/sql package. The trick to
+	// getting around this is to alias the package name to the blank identifier. This is standard
+	// practice for most of Go’s SQL drivers.
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // Define an application struct to hold the application-wide dependencies for the
@@ -21,6 +30,9 @@ func main() {
 	// and some short help text explaining what the flag controls. The value of the
 	// flag will be stored in the addr variable at runtime.
 	addr := flag.String("addr", ":4000", "HTTP NETWORK ADDRESS")
+
+	// Define a new command-line flag for the MySQL DSN string.
+	dsn := flag.String("dsn", "./example.db", "SQLITE3 Data Source Name")
 
 	// Importantly, we use the flag.Parse() function to parse the command-line flag.
 	// This reads in the command-line flag value and assigns it to the addr
@@ -40,6 +52,23 @@ func main() {
 	// the destination and use the log.Lshortfile flag to include the relevant
 	// file name and line number.
 	errorLog := log.New(os.Stderr, "ERROR\t", log.Ldate|log.Ltime|log.Lshortfile)
+
+	// To keep the main() function tidy I've put the code for creating a connection
+	// pool into the separate openDB() function below. We pass openDB() the DSN
+	// from the command-line flag.
+	db, err := openDB(*dsn)
+	if err != nil {
+		errorLog.Fatal(err)
+	}
+
+	// We also defer a call to db.Close(), so that the connection pool is closed
+	// before the main() function exits.
+	// 	At this moment in time, the call to defer db.Close() is a bit superfluous. Our application
+	// is only ever terminated by a signal interrupt (i.e. Ctrl+c) or by errorLog.Fatal(). In both
+	// of those cases, the program exits immediately and deferred functions are never run. But
+	// including db.Close() is a good habit to get into and it could be beneficial later in the
+	// future if you add a graceful shutdown to your application.
+	defer db.Close()
 
 	app := &application{
 		errorLog: errorLog,
@@ -65,7 +94,28 @@ func main() {
 	infoLog.Printf("Starting server on %s", *addr)
 	// err := http.ListenAndServe(*addr, mux)
 
-	err := server.ListenAndServe()
+	// err := server.ListenAndServe()
+	// Because the err variable is now already declared in the code above, we need
+	// to use the assignment operator = here, instead of the := 'declare and assign'
+	// operator.
+	err = server.ListenAndServe()
 	errorLog.Fatal(err)
 
+}
+
+// The openDB() function wraps sql.Open() and returns a sql.DB connection pool for a given dsn
+func openDB(dsn string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		return nil, err
+	}
+
+	// 	The sql.Open() function doesn’t actually create any connections, all it does is initialize the
+	// pool for future use. Actual connections to the database are established lazily, as and when
+	// needed for the first time. So to verify that everything is set up correctly we need to use the
+	// db.Ping() method to create a connection and check for any errors.
+	if err = db.Ping(); err != nil {
+		return nil, err
+	}
+	return db, nil
 }

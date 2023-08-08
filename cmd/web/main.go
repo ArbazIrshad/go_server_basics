@@ -8,6 +8,13 @@ import (
 	"net/http"
 	"os"
 
+	// Import the models package that we just created. You need to prefix this with
+	// whatever module path you set up back in chapter 02.01 (Project Setup and Creating
+	// a Module) so that the import statement looks like this:
+	// "{your-module-path}/internal/models". If you can't remember what module path you
+	// used, you can find it at the top of the go.mod file.
+	"go_basics/internals/models"
+
 	// Notice how the import path for our driver is prefixed with an underscore? This is because
 	// our main.go file doesn’t actually use anything in the mysql package. So if we try to import
 	// it normally the Go compiler will raise an error. However, we need the driver’s init()
@@ -23,6 +30,7 @@ import (
 type application struct {
 	errorLog *log.Logger
 	infoLog  *log.Logger
+	tasks    *models.TaskModel
 }
 
 func main() {
@@ -73,6 +81,7 @@ func main() {
 	app := &application{
 		errorLog: errorLog,
 		infoLog:  infoLog,
+		tasks:    &models.TaskModel{DB: db},
 	}
 
 	fmt.Println("Hello World")
